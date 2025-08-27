@@ -1,0 +1,13 @@
+# Ignore .env files containing environment variables
+.env
+
+# Ignore Python bytecode files
+*.pyc
+*.pyo
+
+# Ignore Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore any other sensitive files or folders you want to exclude
+secrets/
+config/
