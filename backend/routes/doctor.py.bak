@@ -15,12 +15,6 @@ def _utc_iso(dt: datetime) -> str:
 
 
 def _parse_slot_obj(s):
-    """Normalize input into a slot dict {start, end} with UTC ISO strings.
-
-    Accepts either a dict with 'start' and 'end' ISO strings, or a single ISO string
-    which is interpreted as a start and given a +1 hour end.
-    Returns None on parse failure.
-    """
     if isinstance(s, dict) and 'start' in s and 'end' in s:
         try:
             start = datetime.fromisoformat(s['start']).astimezone(timezone.utc)
@@ -41,12 +35,12 @@ def _parse_slot_obj(s):
 @doctor_bp.route('/eligible-patients', methods=['GET'])
 @jwt_required()
 def get_eligible_patients():
-    doctor_id = int(get_jwt_identity())
-    claims = get_jwt()
-    if claims.get('role') != 'Doctor':
-        return jsonify({"error": "Unauthorized"}), 403
-
     try:
+        doctor_id = int(get_jwt_identity())
+        claims = get_jwt()
+        if claims.get('role') != 'Doctor':
+            return jsonify({"error": "Unauthorized"}), 403
+
         appointment_patient_ids = [pid for (pid,) in db.session.query(Appointment.patient_id)
                                    .filter(Appointment.doctor_id == doctor_id)
                                    .distinct()]
@@ -72,12 +66,12 @@ def get_eligible_patients():
 @doctor_bp.route('/patients', methods=['GET'])
 @jwt_required()
 def assigned_patients():
-    doctor_id = int(get_jwt_identity())
-    claims = get_jwt()
-    if claims.get('role') != 'Doctor':
-        return jsonify({'error': 'Unauthorized'}), 403
-
     try:
+        doctor_id = int(get_jwt_identity())
+        claims = get_jwt()
+        if claims.get('role') != 'Doctor':
+            return jsonify({'error': 'Unauthorized'}), 403
+
         access_entries = PatientAccess.query.filter_by(doctor_id=doctor_id, access_granted=True).all()
         access_patient_ids = [entry.patient_id for entry in access_entries]
 
@@ -101,23 +95,23 @@ def assigned_patients():
 @doctor_bp.route('/availability', methods=['PUT'])
 @jwt_required()
 def update_availability():
-    doctor_id = int(get_jwt_identity())
-    claims = get_jwt()
-    if claims.get('role') != 'Doctor':
-        return jsonify({'error': 'Unauthorized'}), 403
-
-    data = request.get_json() or {}
-    slots = data.get('availability_slots')
-    if slots is None:
-        return jsonify({'error': 'No availability_slots provided'}), 400
-
-    normalized = []
-    for s in slots:
-        slot = _parse_slot_obj(s)
-        if slot:
-            normalized.append(slot)
-
     try:
+        doctor_id = int(get_jwt_identity())
+        claims = get_jwt()
+        if claims.get('role') != 'Doctor':
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        data = request.get_json() or {}
+        slots = data.get('availability_slots')
+        if slots is None:
+            return jsonify({'error': 'No availability_slots provided'}), 400
+
+        normalized = []
+        for s in slots:
+            slot = _parse_slot_obj(s)
+            if slot:
+                normalized.append(slot)
+
         doc = db.session.get(Doctor, doctor_id)
         if not doc:
             return jsonify({'error': 'Doctor not found'}), 404
@@ -134,26 +128,26 @@ def update_availability():
 @doctor_bp.route('/availability/default', methods=['PUT'])
 @jwt_required()
 def populate_default_availability():
-    doctor_id = int(get_jwt_identity())
-    claims = get_jwt()
-    if claims.get('role') != 'Doctor':
-        return jsonify({'error': 'Unauthorized'}), 403
-
-    data = request.get_json() or {}
-    days = int(data.get('days', 7))
-    if days <= 0:
-        days = 7
-
-    base = datetime.now(timezone.utc)
-    slots = []
-    for d in range(days):
-        day = base + timedelta(days=d)
-        for hour in range(10, 19):
-            start_dt = datetime(year=day.year, month=day.month, day=day.day, hour=hour, minute=0, second=0, tzinfo=timezone.utc)
-            end_dt = start_dt + timedelta(hours=1)
-            slots.append({'start': _utc_iso(start_dt), 'end': _utc_iso(end_dt)})
-
     try:
+        doctor_id = int(get_jwt_identity())
+        claims = get_jwt()
+        if claims.get('role') != 'Doctor':
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        data = request.get_json() or {}
+        days = int(data.get('days', 7))
+        if days <= 0:
+            days = 7
+
+        base = datetime.now(timezone.utc)
+        slots = []
+        for d in range(days):
+            day = base + timedelta(days=d)
+            for hour in range(10, 19):
+                start_dt = datetime(year=day.year, month=day.month, day=day.day, hour=hour, minute=0, second=0, tzinfo=timezone.utc)
+                end_dt = start_dt + timedelta(hours=1)
+                slots.append({'start': _utc_iso(start_dt), 'end': _utc_iso(end_dt)})
+
         doc = db.session.get(Doctor, doctor_id)
         if not doc:
             return jsonify({'error': 'Doctor not found'}), 404
@@ -175,12 +169,12 @@ def create_prescription():
     if claims.get('role') != 'Doctor':
         return jsonify({"error": "Unauthorized"}), 403
 
-    data = request.get_json() or {}
-    patient_id = data.get('patient_id') or data.get('patientId') or data.get('patient')
-    diagnosis = data.get('diagnosis') or data.get('diagnosis_text') or ''
-    medicines = data.get('medicines') or data.get('medicine_list') or []
-
     try:
+        data = request.get_json() or {}
+        patient_id = data.get('patient_id') or data.get('patientId') or data.get('patient')
+        diagnosis = data.get('diagnosis') or data.get('diagnosis_text') or ''
+        medicines = data.get('medicines') or data.get('medicine_list') or []
+
         patient = db.session.get(User, patient_id)
         if not patient or getattr(patient, 'role', None) != 'Patient':
             return jsonify({"error": "Patient not found"}), 404
@@ -216,6 +210,7 @@ def create_prescription():
 
         db.session.commit()
         return jsonify({"message": "Prescription created successfully", "prescription_id": prescription.prescription_id}), 201
+
     except Exception:
         db.session.rollback()
         logger.exception("create_prescription error")
@@ -225,12 +220,12 @@ def create_prescription():
 @doctor_bp.route('/prescriptions/<int:prescription_id>', methods=['DELETE'])
 @jwt_required()
 def delete_prescription(prescription_id):
-    doctor_id = int(get_jwt_identity())
-    claims = get_jwt()
-    if claims.get('role') != 'Doctor':
-        return jsonify({'error': 'Unauthorized'}), 403
-
     try:
+        doctor_id = int(get_jwt_identity())
+        claims = get_jwt()
+        if claims.get('role') != 'Doctor':
+            return jsonify({'error': 'Unauthorized'}), 403
+
         pres = db.session.get(Prescription, prescription_id)
         if not pres:
             return jsonify({'error': 'Prescription not found'}), 404
@@ -242,6 +237,7 @@ def delete_prescription(prescription_id):
         db.session.delete(pres)
         db.session.commit()
         return jsonify({'message': 'Prescription deleted successfully'}), 200
+
     except Exception:
         db.session.rollback()
         logger.exception("delete_prescription error")

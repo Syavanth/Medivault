@@ -78,6 +78,7 @@ class Appointment(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     doctor_id = db.Column(db.Integer, db.ForeignKey('doctors.doctor_id'), nullable=False)
     date_time = db.Column(db.DateTime, nullable=False)
+    purpose = db.Column(db.String(255))
     status = db.Column(db.String(20), default="Pending")  # Pending/Approved/Cancelled
 
 # ------------------- LAB REPORTS -------------------

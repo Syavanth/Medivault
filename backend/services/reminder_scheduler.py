@@ -25,7 +25,7 @@ class ReminderScheduler:
 
     def _send_reminder(self, reminder_id):
         try:
-            reminder = MedicationReminder.query.get(reminder_id)
+            reminder = db.session.get(MedicationReminder, reminder_id)
             if not reminder or not reminder.is_active:
                 return
 
@@ -35,8 +35,8 @@ class ReminderScheduler:
                 return
 
             # Get patient and medicine details
-            patient = User.query.get(reminder.patient_id)
-            medicine = MedicineEntry.query.get(reminder.medicine_entry_id)
+            patient = db.session.get(User, reminder.patient_id)
+            medicine = db.session.get(MedicineEntry, reminder.medicine_entry_id)
 
             if patient and patient.phone_number and medicine:
                 sms_service.send_reminder(

@@ -107,13 +107,24 @@ export default function DoctorDashboard() {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
+      // Normalize payload to backend expected keys
+      const payload = {
+        patient_id: prescriptionForm.patientId,
+        diagnosis: prescriptionForm.diagnosis,
+        medicines: prescriptionForm.medicines.map(m => ({
+          name: m.name,
+          dosage: m.dosage,
+          timing: m.instructions
+        }))
+      };
+
       const response = await fetch(`${API_BASE_URL}/doctor/prescriptions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(prescriptionForm)
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -131,6 +142,27 @@ export default function DoctorDashboard() {
     } catch (error) {
       console.error('Error creating prescription:', error);
       alert('Failed to create prescription');
+    }
+  };
+
+  const handleDeletePrescription = async (prescriptionId) => {
+    if (!window.confirm('Delete this prescription? This action cannot be undone.')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/doctor/prescriptions/${prescriptionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) throw new Error('Failed to delete prescription');
+      setPrescriptions(prev => prev.filter(p => p.id !== prescriptionId && p.prescription_id !== prescriptionId));
+      alert('Prescription deleted');
+    } catch (error) {
+      console.error('Error deleting prescription:', error);
+      alert('Failed to delete prescription');
     }
   };
 
@@ -288,6 +320,32 @@ export default function DoctorDashboard() {
         </div>
       </header>
 
+      <div className="max-w-7xl mx-auto py-4 px-4">
+        <div className="flex justify-end">
+          <button
+            onClick={async () => {
+              try {
+                const token = localStorage.getItem('token');
+                const resp = await fetch(`${API_BASE_URL}/doctor/availability/default`, {
+                  method: 'PUT',
+                  headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ days: 7 })
+                });
+                if (!resp.ok) throw new Error('Failed to populate default slots');
+                const data = await resp.json();
+                alert(`Populated ${data.slots_count} slots`);
+              } catch (err) {
+                console.error(err);
+                alert('Failed to populate default availability');
+              }
+            }}
+            className="px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700"
+          >
+            Populate Default Slots (10:00-18:00)
+          </button>
+        </div>
+      </div>
+
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         {/* Navigation Tabs */}
@@ -441,13 +499,21 @@ export default function DoctorDashboard() {
               <h2 className="text-xl font-semibold mb-4">Recent Prescriptions</h2>
               <div className="space-y-4">
                 {prescriptions.map((prescription) => (
-                  <div key={prescription.id} className="bg-white border border-teal-100 rounded-lg shadow-sm">
+                  <div key={prescription.id || prescription.prescription_id} className="bg-white border border-teal-100 rounded-lg shadow-sm">
                     <div className="p-6 border-b border-teal-100">
                       <div className="flex justify-between">
                         <h3 className="text-lg font-semibold text-gray-900">Prescription for {prescription.patient_name}</h3>
                         <span className="text-sm text-gray-500">{prescription.date}</span>
                       </div>
                       <p className="text-sm text-gray-500 mt-1">Diagnosis: {prescription.diagnosis}</p>
+                      <div className="mt-3">
+                        <button
+                          onClick={() => handleDeletePrescription(prescription.prescription_id || prescription.id)}
+                          className="px-3 py-1 rounded-md bg-red-600 text-white hover:bg-red-700"
+                        >
+                          Delete Prescription
+                        </button>
+                      </div>
                     </div>
                     <div className="p-6">
                       <div className="space-y-4">

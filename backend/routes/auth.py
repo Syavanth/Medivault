@@ -48,6 +48,12 @@ def register():
             # You may want to collect specialization/availability from frontend
             specialization = data.get('specialization', 'General')
             availability_slots = data.get('availability_slots', '')
+            # normalize availability_slots to JSON string
+            import json
+            if isinstance(availability_slots, list):
+                availability_slots = json.dumps(availability_slots)
+            elif isinstance(availability_slots, str) and availability_slots.strip() == '':
+                availability_slots = json.dumps([])
             from models import Doctor
             new_doctor = Doctor(
                 doctor_id=new_user.user_id,

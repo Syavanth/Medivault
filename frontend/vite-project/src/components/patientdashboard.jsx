@@ -23,9 +23,9 @@ function PatientDashboard() {
     instructions: ''
   })
   const [newAppointment, setNewAppointment] = useState({
+    doctorId: '',
     doctorName: '',
-    date: '',
-    time: '',
+    slot: '',
     purpose: ''
   })
   const [showNewAppointmentModal, setShowNewAppointmentModal] = useState(false)
@@ -91,7 +91,15 @@ function PatientDashboard() {
 
         // --- ✅ NEW: Fetch doctor list separately ---
       const doctorsList = await fetchWithAuth('/patient/available-doctors')
-      setAvailableDoctors(doctorsList || [])
+      // normalize availability_slots to array on each doctor
+      const normalized = (doctorsList || []).map(d => {
+        let slots = d.availability_slots || []
+        if (typeof slots === 'string') {
+          try { slots = JSON.parse(slots) } catch (err) { slots = slots.split(',').map(s=>s.trim()).filter(Boolean) }
+        }
+        return { ...d, availability_slots: Array.isArray(slots) ? slots : [slots] }
+      })
+      setAvailableDoctors(normalized)
       
       } catch (err) {
         console.error('Error fetching dashboard data:', err)
@@ -130,21 +138,15 @@ function PatientDashboard() {
       method: 'POST',
       body: JSON.stringify({
         doctor_id: parseInt(newAppointment.doctorId),
-        date_time: `${newAppointment.date}T${newAppointment.time}`,
+        date_time: newAppointment.slot,
         purpose: newAppointment.purpose
       })
     });
 
     // response contains 'appointment' object
-    const appt = response.appointment || { id: Date.now(), doctor_name: newAppointment.doctorName, date: newAppointment.date, time: newAppointment.time, purpose: newAppointment.purpose, status: 'Pending' };
+    const appt = response.appointment || { id: Date.now(), doctor_name: newAppointment.doctorName, date: new Date(newAppointment.slot).toISOString().split('T')[0], time: new Date(newAppointment.slot).toISOString().split('T')[1].slice(0,5), purpose: newAppointment.purpose, status: 'Pending' };
     setAppointments([...appointments, appt]);
-    setNewAppointment({
-      doctorId: '',
-      doctorName: '',
-      date: '',
-      time: '',
-      purpose: ''
-    });
+    setNewAppointment({ doctorId: '', doctorName: '', slot: '', purpose: '' });
     setShowNewAppointmentModal(false);
   } catch (error) {
     console.error('Error scheduling appointment:', error);
@@ -278,15 +280,32 @@ function PatientDashboard() {
   }
 
   const handleDeleteReminder = async (reminderId) => {
-  try {
-    await fetchWithAuth(`/patient/reminders/${reminderId}`, { method: 'DELETE' });
+    if (!window.confirm('Are you sure you want to delete this reminder?')) return;
+    try {
+      await fetchWithAuth(`/patient/reminders/${reminderId}`, { method: 'DELETE' });
 
-    const data = await fetchWithAuth('/patient/dashboard');
-    setReminders(data.reminders);
-  } catch (error) {
-    console.error('Error deleting reminder:', error);
-  }
-};
+      const data = await fetchWithAuth('/patient/dashboard');
+      setReminders(data.reminders);
+    } catch (error) {
+      console.error('Error deleting reminder:', error);
+      alert(error.message || 'Failed to delete reminder');
+    }
+  };
+
+  const handleDeleteAppointment = async (appointmentId) => {
+    if (!window.confirm('Are you sure you want to delete this appointment?')) return;
+    try {
+      await fetchWithAuth(`/patient/appointments/${appointmentId}`, { method: 'DELETE' });
+      // remove from local state
+      setAppointments(prev => prev.filter(a => a.appointment_id !== appointmentId && a.id !== appointmentId && a.appointmentId !== appointmentId));
+      // refresh dashboard data lightly
+      const data = await fetchWithAuth('/patient/dashboard');
+      setAppointments(data.appointments || []);
+    } catch (error) {
+      console.error('Error deleting appointment:', error);
+      alert(error.message || 'Failed to delete appointment');
+    }
+  };
 
 
   const toggleDaySelection = (day) => {
@@ -522,7 +541,7 @@ function PatientDashboard() {
           ) : (
             <div className="space-y-4">
               {appointments.map((appointment) => (
-                <div key={appointment.id} className="border rounded-lg p-4">
+                <div key={appointment.id || appointment.appointment_id} className="border rounded-lg p-4">
                   <div className="flex justify-between items-start">
                     <div>
                       <h3 className="text-lg font-medium text-gray-900">
@@ -588,6 +607,16 @@ function PatientDashboard() {
                           Reject
                         </button>
                       </div>
+                      {(!appointment.status || (appointment.status !== 'completed' && appointment.status !== 'cancelled')) && (
+                        <div className="mt-3 flex space-x-2">
+                          <button
+                            onClick={() => handleDeleteAppointment(appointment.appointment_id || appointment.id || appointment.id)}
+                            className="px-3 py-1 rounded-md bg-red-600 text-white hover:bg-red-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -736,25 +765,9 @@ function PatientDashboard() {
                       doctorId: e.target.value,
                       doctorName: doctor ? doctor.name : ''
                     });
-                    // If selected doctor has availability, show next available slot as suggestion
-                    if (doctor && doctor.availability_slots) {
-                      try {
-                        const slots = typeof doctor.availability_slots === 'string' ? JSON.parse(doctor.availability_slots) : doctor.availability_slots;
-                        if (Array.isArray(slots) && slots.length > 0) {
-                          // set suggested date/time as first slot
-                          const first = new Date(slots[0]);
-                          setNewAppointment(prev => ({ ...prev, date: first.toISOString().split('T')[0], time: first.toISOString().split('T')[1].slice(0,5) }));
-                        }
-                      } catch (err) {
-                        // fallback for comma separated
-                        const parts = (doctor.availability_slots || '').split(',').map(s => s.trim()).filter(Boolean);
-                        if (parts.length > 0) {
-                          const first = new Date(parts[0]);
-                          if (!isNaN(first)) {
-                            setNewAppointment(prev => ({ ...prev, date: first.toISOString().split('T')[0], time: first.toISOString().split('T')[1].slice(0,5) }));
-                          }
-                        }
-                      }
+                    // If selected doctor has availability, set first slot as selected
+                    if (doctor && doctor.availability_slots && doctor.availability_slots.length > 0) {
+                      setNewAppointment(prev => ({ ...prev, slot: doctor.availability_slots[0] }))
                     }
                   }}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500"
@@ -769,22 +782,18 @@ function PatientDashboard() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Date</label>
-                <input
-                  type="date"
-                  value={newAppointment.date}
-                  onChange={(e) => setNewAppointment({...newAppointment, date: e.target.value})}
+                <label className="block text-sm font-medium text-gray-700">Available Slots</label>
+                <select
+                  value={newAppointment.slot}
+                  onChange={(e) => setNewAppointment({...newAppointment, slot: e.target.value})}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Time</label>
-                <input
-                  type="time"
-                  value={newAppointment.time}
-                  onChange={(e) => setNewAppointment({...newAppointment, time: e.target.value})}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500"
-                />
+                  required
+                >
+                  <option value="">Select a slot</option>
+                  {(availableDoctors.find(d => d.id === parseInt(newAppointment.doctorId))?.availability_slots || []).map((s, idx) => (
+                    <option key={idx} value={s}>{new Date(s).toLocaleString()}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Purpose</label>
